@@ -4,6 +4,8 @@ import com.theplumteam.multiplayerspawners.Constants;
 import com.theplumteam.multiplayerspawners.client.ClientSpawnerData;
 import com.theplumteam.multiplayerspawners.config.ModConfig;
 import com.theplumteam.multiplayerspawners.platform.Services;
+import com.theplumteam.multiplayerspawners.util.OneShotData;
+import com.theplumteam.multiplayerspawners.util.OneShotSpawners;
 import com.theplumteam.multiplayerspawners.util.SpawnerDataAccessor;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
@@ -55,6 +57,17 @@ public abstract class NetworkHandler {
     public void sendSpawnerStateToTracking(Level level, BlockPos pos, Set<String> disabledPlayers, boolean treatedAsVanilla) {
         if (level instanceof ServerLevel serverLevel) {
             sendToPlayersTracking(serverLevel, pos, SpawnerStatePacket.single(pos, disabledPlayers, false, treatedAsVanilla));
+        }
+    }
+
+    /**
+     * Sends who a single-use spawner is used up for to every player tracking its chunk.
+     */
+    public void sendOneShotStateToTracking(Level level, BlockPos pos, Set<String> usedBy) {
+        if (level instanceof ServerLevel serverLevel) {
+            List<SpawnerStatePacket.SpawnerUpdate> updates = new ArrayList<>(1);
+            updates.add(new SpawnerStatePacket.SpawnerUpdate(pos, Set.copyOf(usedBy), false, true));
+            sendToPlayersTracking(serverLevel, pos, new SpawnerStatePacket(updates, false));
         }
     }
 
@@ -115,6 +128,9 @@ public abstract class NetworkHandler {
                 if (!disabledPlayers.isEmpty() || treatedAsVanilla) {
                     updates.add(new SpawnerStatePacket.SpawnerUpdate(pos, Set.copyOf(disabledPlayers), treatedAsVanilla));
                 }
+            } else if (blockEntity instanceof OneShotData oneShot && !oneShot.multiplayerspawners$getUsedBy().isEmpty()
+                    && OneShotSpawners.isOneShot(blockEntity.getBlockState())) {
+                updates.add(new SpawnerStatePacket.SpawnerUpdate(pos, Set.copyOf(oneShot.multiplayerspawners$getUsedBy()), false, true));
             }
         });
         return updates;
@@ -127,7 +143,11 @@ public abstract class NetworkHandler {
         Constants.debug("CLIENT: Received spawner state packet with {} updates, isFullSync: {}",
                 packet.updates().size(), packet.isFullSync());
         for (SpawnerStatePacket.SpawnerUpdate update : packet.updates()) {
-            ClientSpawnerData.updateSpawnerState(update.pos(), update.disabledPlayers(), update.treatedAsVanilla());
+            if (update.oneShot()) {
+                ClientSpawnerData.updateOneShotState(update.pos(), update.disabledPlayers());
+            } else {
+                ClientSpawnerData.updateSpawnerState(update.pos(), update.disabledPlayers(), update.treatedAsVanilla());
+            }
         }
     }
 }

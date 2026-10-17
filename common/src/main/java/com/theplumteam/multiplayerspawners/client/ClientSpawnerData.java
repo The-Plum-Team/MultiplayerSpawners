@@ -23,6 +23,8 @@ public class ClientSpawnerData {
     private static final Map<BlockPos, Boolean> playerDisabledSpawners = new HashMap<>();
     private static final Set<BlockPos> spawnersNeedingUpdate = new HashSet<>();
     private static final Set<BlockPos> vanillaTreatedSpawners = new HashSet<>();
+    /** Single-use spawners of other mods that are used up for the current player. */
+    private static final Set<BlockPos> usedUpOneShots = new HashSet<>();
 
     private static String cachedPlayerName = null;
     private static String currentDimension = null;
@@ -126,6 +128,20 @@ public class ClientSpawnerData {
         }
     }
 
+    /** A single-use spawner's state: only remembered, the block itself is left alone. */
+    public static void updateOneShotState(BlockPos pos, Set<String> usedBy) {
+        String currentPlayerName = getCurrentPlayerName();
+        if (currentPlayerName != null && usedBy.contains(currentPlayerName)) {
+            usedUpOneShots.add(pos.immutable());
+        } else {
+            usedUpOneShots.remove(pos);
+        }
+    }
+
+    public static boolean isOneShotUsedUpForCurrentPlayer(BlockPos pos) {
+        return usedUpOneShots.contains(pos);
+    }
+
     public static boolean isSpawnerDisabledForCurrentPlayer(BlockPos pos) {
         return playerDisabledSpawners.getOrDefault(pos, false);
     }
@@ -138,6 +154,7 @@ public class ClientSpawnerData {
         playerDisabledSpawners.clear();
         spawnersNeedingUpdate.clear();
         vanillaTreatedSpawners.clear();
+        usedUpOneShots.clear();
         cachedPlayerName = null;
         currentDimension = null;
         lastPeriodicRefresh = 0;

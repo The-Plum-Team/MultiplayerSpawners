@@ -1,6 +1,8 @@
 package com.theplumteam.multiplayerspawners.util;
 
 import com.theplumteam.multiplayerspawners.Constants;
+import com.theplumteam.multiplayerspawners.client.ClientSpawnerData;
+import com.theplumteam.multiplayerspawners.network.NetworkHandler;
 import com.theplumteam.multiplayerspawners.config.ModConfig;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
@@ -33,7 +35,8 @@ import java.util.List;
  *
  * <p>Their tick also runs on the client (Quark's box counts down there too and removes itself from
  * the client's world), so the client keeps the block the same way: every player keeps seeing a
- * block the server keeps.
+ * block the server keeps. The server tells each client who a block is used up for: for a player it is
+ * used up for, it does not tick on their client at all (no particles, no countdown).
  *
  * <p>Nothing here refers to those mods' classes: the block entity's ticker is wrapped (its tag
  * decides), and a removal of that block during its own tick is caught in {@code Level.setBlock}.
@@ -64,7 +67,10 @@ public final class OneShotSpawners {
             return true;
         }
         if (level.isClientSide()) {
-            // The client does not know who used it up: it only keeps the block (interceptRemoval).
+            if (ClientSpawnerData.isOneShotUsedUpForCurrentPlayer(blockEntity.getBlockPos())) {
+                return false;
+            }
+            // Otherwise it ticks, and only keeps its block (interceptRemoval).
             ticking = blockEntity;
             return true;
         }
@@ -119,6 +125,7 @@ public final class OneShotSpawners {
                     .append(" has been used up for you. It stays for the other players.").withStyle(ChatFormatting.GOLD));
         }
         renew(level, pos, blockEntity, data);
+        NetworkHandler.getInstance().sendOneShotStateToTracking(level, pos, data.multiplayerspawners$getUsedBy());
         Constants.debug("Single-use spawner at {} used up for {} instead of removed", pos,
                 usedUp.stream().map(OneShotSpawners::name).toList());
         return true;
@@ -137,6 +144,7 @@ public final class OneShotSpawners {
         Component blockName = level.getBlockState(pos).getBlock().getName();
         if (data.multiplayerspawners$getUsedBy().add(name(player))) {
             ((BlockEntity) data).setChanged();
+            NetworkHandler.getInstance().sendOneShotStateToTracking(level, pos, data.multiplayerspawners$getUsedBy());
             Notices.send(player, Component.empty().append(blockName)
                     .append(" is now used up for you. It stays for the other players.").withStyle(ChatFormatting.GOLD));
         } else {
